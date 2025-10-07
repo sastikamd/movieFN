@@ -12,6 +12,8 @@ import MovieDetails from './pages/MovieDetails';
 import BookingConfirmation from './pages/BookingConfirmation';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
+import PaymentPage from './pages/paymentPage';
+
 
 function App() {
   return (
@@ -27,16 +29,13 @@ function App() {
                 <Route path="/movie/:id" element={<MovieDetails />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/payment" element={<PaymentPage />} />
                 <Route path="/profile" element={
                   <ProtectedRoute>
                     <Profile />
                   </ProtectedRoute>
                 } />
-                <Route path="/booking-confirmation/:bookingId" element={
-                  <ProtectedRoute>
-                    <BookingConfirmation />
-                  </ProtectedRoute>
-                } />
+                <Route path="/booking-confirmation" element={<BookingConfirmation />} />
                 <Route path="*" element={
                   <div className="min-h-screen flex items-center justify-center">
                     <div className="text-center">
