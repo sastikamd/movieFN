@@ -12,70 +12,40 @@ const CheckoutForm = ({ clientSecret, bookingData, onSuccess }) => {
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState(null);
 
-    const handleSubmit = async (event) => {
-  event.preventDefault();
-  if (!stripe || !elements || !clientSecret) return;
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!stripe || !elements || !clientSecret) return;
 
-  setProcessing(true);
-  setMessage(null);
+    setProcessing(true);
 
-  try {
-    // Confirm payment without redirect
-    const result = await stripe.confirmPayment({
+    const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
-      redirect: 'if_required', // prevents redirect unless absolutely needed
+      confirmParams: { return_url: window.location.origin + '/booking-confirmation' },
     });
 
-    if (result.error) {
-      console.error('Stripe confirm error:', result.error);
-      setMessage(result.error.message || 'Payment error');
+    if (error) {
+      setMessage(error.message);
       setProcessing(false);
-      return;
+    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+      try {
+        // Include paymentIntentId in booking payload
+        const bookingPayload = {
+          ...bookingData,
+          paymentIntentId: paymentIntent.id,
+        };
+
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/bookings`,
+          bookingPayload,
+          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        );
+        onSuccess();
+      } catch {
+        setMessage('Booking failed after payment.');
+        setProcessing(false);
+      }
     }
-
-    const paymentIntent = result.paymentIntent;
-    console.log('Stripe paymentIntent:', paymentIntent);
-
-    if (!paymentIntent) {
-      setMessage('No payment intent returned.');
-      setProcessing(false);
-      return;
-    }
-
-    // Check if payment succeeded immediately
-    if (paymentIntent.status === 'succeeded') {
-      // Call your backend API to save the booking with this paymentIntentId
-      const bookingPayload = {
-        ...bookingData,
-        paymentIntentId: paymentIntent.id,
-      };
-      console.log('Booking payload:', bookingPayload);
-
-      const token = localStorage.getItem('token');
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/bookings`,
-        bookingPayload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      console.log('Booking API response:', response.data);
-
-      // Navigate after booking is successfully saved
-      onSuccess();
-
-    } else {
-      // When payment is in a pending state or needs additional actions
-      setMessage('Payment is processing or requires additional steps.');
-      setProcessing(false);
-    }
-  } catch (err) {
-    console.error('Error during payment confirmation or booking:', err);
-    setMessage('An unexpected error occurred.');
-    setProcessing(false);
-  }
-};
-
-
-
+  };
 
   return (
     <form onSubmit={handleSubmit}>
@@ -104,18 +74,13 @@ const PaymentPage = () => {
 
     async function createPaymentIntent() {
       const token = localStorage.getItem('token');
-      try {
-        const { data } = await axios.post(
-          `${import.meta.env.VITE_API_URL}/payments/create-payment-intent`,
-          { amount: bookingData.amount },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setClientSecret(data.clientSecret);
-        setLoading(false);
-      } catch (err) {
-        console.error('Error creating payment intent', err);
-        setLoading(false);
-      }
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL}/payments/create-payment-intent`,
+        { amount: bookingData.amount },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setClientSecret(data.clientSecret);
+      setLoading(false);
     }
 
     createPaymentIntent();
