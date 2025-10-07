@@ -1,55 +1,76 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import axios from 'axios';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
-const CheckoutForm = ({ bookingData }) => {
+// 🎨 Appearance configuration
+const appearance = {
+  theme: 'flat',
+  variables: {
+    colorPrimary: '#0570de',
+    colorBackground: '#ffffff',
+    colorText: '#30313d',
+    colorDanger: '#df1b41',
+    fontFamily: 'Ideal Sans, system-ui, sans-serif',
+    spacingUnit: '2px',
+    borderRadius: '6px',
+  },
+  rules: {
+    '.Input': {
+      border: '1px solid #ccc',
+      borderRadius: '6px',
+      padding: '10px 14px',
+      backgroundColor: '#fff',
+    },
+    '.Input--invalid': {
+      borderColor: '#fa755a',
+    },
+    '.Input--complete': {
+      borderColor: '#4caf50',
+    },
+  },
+};
+
+// 🧾 CheckoutForm component
+const CheckoutForm = ({ clientSecret, bookingData }) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  if (!bookingData) return <p>Loading booking data...</p>;
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    try {
-      const token = localStorage.getItem('token');
-      
-      // Create payment intent
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_API_URL}/payments/create-payment-intent`,
-        { amount: bookingData.amount }, // Use bookingData.amount (consistent)
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const clientSecret = data.clientSecret;
+    if (!stripe || !elements) return;
 
-      // Confirm card payment
-      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: elements.getElement(CardElement),
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        payment_method_data: {
           billing_details: {
             name: bookingData.userName || 'Customer',
             email: bookingData.userEmail || 'customer@example.com',
           },
         },
-      });
+      },
+      redirect: 'if_required', // prevents auto redirect
+    });
 
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
+    }
 
-      if (paymentIntent.status === 'succeeded') {
-        // Save booking in backend with authorization
+    if (paymentIntent?.status === 'succeeded') {
+      try {
+        const token = localStorage.getItem('token');
         await axios.post(
           `${import.meta.env.VITE_API_URL}/bookings`,
           {
@@ -62,64 +83,59 @@ const CheckoutForm = ({ bookingData }) => {
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-
-        // Redirect after booking saved
         navigate('/booking-confirmation');
+      } catch (err) {
+        setError('Booking save failed');
       }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Payment or booking failed');
     }
 
     setLoading(false);
   };
 
   return (
-      <form onSubmit={handleSubmit}>
-        <div className="stripe-container">
-
-          <CardElement
-  options={{
-    style: {
-      base: {
-        fontSize: '16px',
-        color: '#32325d',
-        letterSpacing: '0.025em',
-        fontFamily: 'Arial, sans-serif',
-        '::placeholder': {
-          color: '#a0aec0',
-        },
-        padding: '10px 14px',
-        boxSizing: 'border-box',
-      },
-      invalid: {
-        color: '#fa755a',
-      },
-    }
-  }}
-/>
-
-          </div>
-
-          <button disabled={loading || !stripe}>
-              {loading ? 'Processing...' : `Pay ₹${bookingData.amount}`}
-          </button>
-          {error && <p style={{ color: 'red' }}>{error}</p>}
-      </form>
+    <form onSubmit={handleSubmit} className="max-w-md mx-auto mt-6 space-y-4">
+      <PaymentElement />
+      <button disabled={loading || !stripe} className="w-full py-2 bg-blue-600 text-white rounded-md">
+        {loading ? 'Processing...' : `Pay ₹${bookingData.amount}`}
+      </button>
+      {error && <p className="text-red-500 text-center">{error}</p>}
+    </form>
   );
 };
 
+// 💳 PaymentPage wrapper
 const PaymentPage = () => {
   const location = useLocation();
   const bookingData = location.state;
-  console.log('Booking data received:', bookingData);
+  const [clientSecret, setClientSecret] = useState('');
 
-  if (!bookingData) {
-    return <p>Missing booking data. Please go back to select seats.</p>;
-  }
+  useEffect(() => {
+    if (!bookingData) return;
+
+    const createPaymentIntent = async () => {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL}/payments/create-payment-intent`,
+        { amount: bookingData.amount },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setClientSecret(data.clientSecret);
+    };
+
+    createPaymentIntent();
+  }, [bookingData]);
+
+  if (!bookingData) return <p>Missing booking data. Please go back to select seats.</p>;
+  if (!clientSecret) return <p>Setting up payment...</p>;
+
+  const options = {
+    clientSecret,
+    appearance,
+  };
 
   return (
-    <Elements stripe={stripePromise}>
-      <CheckoutForm bookingData={bookingData} />
+    <Elements stripe={stripePromise} options={options}>
+      <CheckoutForm clientSecret={clientSecret} bookingData={bookingData} />
     </Elements>
   );
 };
