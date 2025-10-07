@@ -13,6 +13,8 @@ import BookingConfirmation from './pages/BookingConfirmation';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import PaymentPage from './pages/paymentPage';
+import AdminScheduleShow from './pages/AdminScheduleShow';
+import AdminAddMovie from './pages/AdminAddMovie';
 
 
 function App() {
@@ -30,11 +32,22 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/payment" element={<PaymentPage />} />
+                <Route path="/admin/schedule-show" element={
+                  <ProtectedRoute adminOnly={true}>
+                    <AdminScheduleShow />
+                  </ProtectedRoute>
+                } />
                 <Route path="/profile" element={
                   <ProtectedRoute>
                     <Profile />
                   </ProtectedRoute>
                 } />
+                <Route path="/admin/add-movie" element={
+                  <ProtectedRoute adminOnly={true}>
+                    <AdminAddMovie />
+                  </ProtectedRoute>
+                } />
+
                 <Route path="/booking-confirmation" element={<BookingConfirmation />} />
                 <Route path="*" element={
                   <div className="min-h-screen flex items-center justify-center">

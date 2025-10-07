@@ -78,4 +78,11 @@
     transform: translateY(0);
   }
 }
+.custom{
+  display: flex;
+  flex-direction: column;
+  height: 20rem;
+  align-items: center;
+    justify-content: center;
+}
 

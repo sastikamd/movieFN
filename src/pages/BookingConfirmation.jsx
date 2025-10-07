@@ -5,10 +5,10 @@ const BookingConfirmation = () => {
   const navigate = useNavigate();
 
   return (
-    <div>
+    <div class="d-flex flex-column align-items-center justify-content-center h-50 custom">
       <h1>Booking Successful</h1>
       <p>Your booking has been recorded successfully.</p>
-      <button onClick={() => navigate('/profile')}>Go to My Bookings</button>
+      <button className="btn btn-primary" onClick={() => navigate('/profile')}>Go to My Bookings</button>
     </div>
   );
 };

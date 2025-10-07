@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const isAuthenticated = !!user; // derive from user
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -40,6 +41,25 @@ const Navbar = () => {
             >
               Movies
             </Link>
+
+            {/* {isAuthenticated && user.role === 'admin' && (
+              <Link
+                to="/admin/schedule-show"
+                className="btn btn-primary"
+              >
+                Schedule Shows
+              </Link>
+            )} */}
+
+            {isAuthenticated && user?.role === 'admin' && (
+              <Link
+                to="/admin/add-movie"
+                className="text-gray-700 hover:text-primary-600 font-medium transition-colors"
+              >
+                Add New Movie
+              </Link>
+            )}
+
 
             {isAuthenticated ? (
               <div className="flex items-center space-x-4">
@@ -105,6 +125,16 @@ const Navbar = () => {
               >
                 Movies
               </Link>
+
+              {isAuthenticated && user.role === 'admin' && (
+                <Link
+                  to="/admin/schedule-show"
+                  className="btn btn-primary py-2"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Schedule Shows
+                </Link>
+              )}
 
               {isAuthenticated ? (
                 <>
