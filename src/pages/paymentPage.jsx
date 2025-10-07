@@ -1,105 +1,126 @@
-import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Elements, PaymentElement, useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
 import axios from 'axios';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
-const CheckoutForm = ({ clientSecret, bookingData, onSuccess }) => {
+const CheckoutForm = ({ bookingData }) => {
   const stripe = useStripe();
   const elements = useElements();
-  const [processing, setProcessing] = useState(false);
-  const [message, setMessage] = useState(null);
+  const navigate = useNavigate();
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!stripe || !elements || !clientSecret) return;
+  if (!bookingData) return <p>Loading booking data...</p>;
 
-    setProcessing(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: { return_url: window.location.origin + '/booking-confirmation' },
-    });
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Create payment intent
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL}/payments/create-payment-intent`,
+        { amount: bookingData.amount }, // Use bookingData.amount (consistent)
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const clientSecret = data.clientSecret;
 
-    if (error) {
-      setMessage(error.message);
-      setProcessing(false);
-    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-      try {
-        // Include paymentIntentId in booking payload
-        const bookingPayload = {
-          ...bookingData,
-          paymentIntentId: paymentIntent.id,
-        };
+      // Confirm card payment
+      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: elements.getElement(CardElement),
+          billing_details: {
+            name: bookingData.userName || 'Customer',
+            email: bookingData.userEmail || 'customer@example.com',
+          },
+        },
+      });
 
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (paymentIntent.status === 'succeeded') {
+        // Save booking in backend with authorization
         await axios.post(
           `${import.meta.env.VITE_API_URL}/bookings`,
-          bookingPayload,
-          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+          {
+            paymentIntentId: paymentIntent.id,
+            movieId: bookingData.movieId,
+            seats: bookingData.seats,
+            showDate: bookingData.showDate,
+            showTime: bookingData.showTime,
+            theater: bookingData.theater,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-        onSuccess();
-      } catch {
-        setMessage('Booking failed after payment.');
-        setProcessing(false);
+
+        // Redirect after booking saved
+        navigate('/booking-confirmation');
       }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Payment or booking failed');
     }
+
+    setLoading(false);
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <PaymentElement options={{ layout: 'tabs' }} />
-      {message && <p className="text-red-600">{message}</p>}
-      <button disabled={processing || !stripe} className="btn btn-primary mt-4">
-        {processing ? 'Processing...' : `Pay ₹${bookingData.amount}`}
-      </button>
-    </form>
+      <form onSubmit={handleSubmit}>
+        <div className="stripe-container">
+
+          <CardElement
+  options={{
+    style: {
+      base: {
+        fontSize: '16px',
+        color: '#32325d',
+        letterSpacing: '0.025em',
+        fontFamily: 'Arial, sans-serif',
+        '::placeholder': {
+          color: '#a0aec0',
+        },
+        padding: '10px 14px',
+        boxSizing: 'border-box',
+      },
+      invalid: {
+        color: '#fa755a',
+      },
+    }
+  }}
+/>
+
+          </div>
+
+          <button disabled={loading || !stripe}>
+              {loading ? 'Processing...' : `Pay ₹${bookingData.amount}`}
+          </button>
+          {error && <p style={{ color: 'red' }}>{error}</p>}
+      </form>
   );
 };
 
 const PaymentPage = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const bookingData = location.state;
+  console.log('Booking data received:', bookingData);
 
-  const [clientSecret, setClientSecret] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!bookingData || !bookingData.amount) {
-      navigate('/movies');
-      return;
-    }
-
-    async function createPaymentIntent() {
-      const token = localStorage.getItem('token');
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_API_URL}/payments/create-payment-intent`,
-        { amount: bookingData.amount },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setClientSecret(data.clientSecret);
-      setLoading(false);
-    }
-
-    createPaymentIntent();
-  }, [bookingData, navigate]);
-
-  if (loading) return <p>Loading payment form...</p>;
-
-  const onSuccess = () => {
-    navigate('/booking-confirmation');
-  };
+  if (!bookingData) {
+    return <p>Missing booking data. Please go back to select seats.</p>;
+  }
 
   return (
-    <div className="payment-page max-w-md mx-auto p-6 bg-white rounded shadow">
-      <h2 className="mb-4 text-xl font-bold">Complete Your Payment</h2>
-
-      <Elements stripe={stripePromise} options={{ clientSecret }}>
-        <CheckoutForm clientSecret={clientSecret} bookingData={bookingData} onSuccess={onSuccess} />
-      </Elements>
-    </div>
+    <Elements stripe={stripePromise}>
+      <CheckoutForm bookingData={bookingData} />
+    </Elements>
   );
 };
 
